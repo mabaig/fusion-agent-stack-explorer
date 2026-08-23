@@ -1,0 +1,18 @@
+# Local toolchain and the exported upstream corpus
+.venv-graphify/
+.source/
+
+# Derived output. The publish workflow rebuilds all of this from upstream, and
+# `./run.sh --sync` reproduces it locally, so none of it belongs in git.
+graph/
+graphify-out/
+vault/
+docs/
+data/
+app/data.js
+app/agent-stack-explorer.html
+
+# noise
+node_modules/
+*.log
+.DS_Store
