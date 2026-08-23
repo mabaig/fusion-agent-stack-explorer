@@ -468,6 +468,7 @@ ul.links li { padding: 2px 0; font-size: 12.5px; }
   cursor: pointer;
 }
 .stage-actions button:hover, .mini:hover { color: var(--accent); border-color: var(--accent); }
+.mini.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 
 /* ------------------------------------------------------------- hover tip */
 

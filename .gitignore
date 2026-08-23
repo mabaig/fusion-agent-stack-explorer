@@ -12,6 +12,10 @@ data/
 app/data.js
 app/agent-stack-explorer.html
 
+# Your own exports: ingested but never committed
+local/*
+!local/README.md
+
 # noise
 node_modules/
 *.log

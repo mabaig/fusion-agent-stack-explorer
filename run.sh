@@ -7,6 +7,9 @@
 #   ./run.sh --repo /path/to/repo  # build from a checkout you point at
 #   ./run.sh --skip-graphify       # graph + metrics + vault + app only
 #
+# Exports downloaded from a live environment are picked up automatically: drop
+# them in local/ (see local/README.md).
+#
 # Read-only with respect to your clone and the rest of the workspace. --sync
 # exports the upstream tree into .source/ with `git archive`; it never checks
 # out, resets, or otherwise touches your working tree.
@@ -99,6 +102,10 @@ else
 fi
 
 # ---------------------------------------------------------------- build
+
+step "Ingesting local exports"
+# normalises anything in local/ (or ../CustomAgentArtifacts) into .source/local
+node tools/ingest-local.mjs --clean
 
 step "Extracting the knowledge graph"
 node tools/extract-fusion-graph.mjs --repo "$REPO"

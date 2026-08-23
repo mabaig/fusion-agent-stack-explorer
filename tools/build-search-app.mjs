@@ -60,6 +60,8 @@ const KEEP = [
   'layer', 'layerName', 'stackRole', 'appExposed',
   // supported-tool-type classification
   'toolTypeKey', 'toolTypeName', 'toolTypeSource', 'supportedSince', 'artifactCount', 'usedHere',
+  // Oracle console section, provenance, and .agent specifics
+  'studioSection', 'origin', 'agentKind', 'reusable', 'namespace', 'maxInteractions',
 ];
 
 const nodes = graph.nodes.map((n) => {
@@ -92,6 +94,7 @@ const payload = {
   metrics: graph._meta?.metrics ?? {},
   layers: graph._meta?.layers ?? {},
   toolTypes: graph._meta?.toolTypes ?? {},
+  studioSections: graph._meta?.studioSections ?? {},
   nodes,
   edges,
 };

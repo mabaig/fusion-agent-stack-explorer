@@ -88,6 +88,93 @@ supervising; 5 supervise only; 8 are app-exposed only.
 Business outcomes are the honest weak point: the repo has no outcome artifact, so `product`
 and `family` stand in for it. Treat that band as "business area", not as a measured outcome.
 
+---
+
+## Ingesting your own apps and workflows
+
+The graph is not limited to Oracle's samples — export from a live environment and
+`./run.sh` folds your artifacts in beside them.
+
+### Steps
+
+1. **Download from the console.**
+   - *Applications* → your app → download → `MY_APP.json`
+   - *Workflows* → your workflow → download → `my_workflow.zip`
+2. **Drop them in `local/`.** Any mix of `.json`, `.zip` or loose `src/` trees.
+3. **`./run.sh`** — ingestion runs first, then everything rebuilds.
+
+That's it. To ingest without a full rebuild: `node tools/ingest-local.mjs`.
+
+### What the ingester handles for you
+
+The two export shapes are genuinely different, which is why a plain copy does not
+work:
+
+| Export | Shape | Problem it would cause |
+| --- | --- | --- |
+| App `.json` | `specification` is a **JSON string** | The extractor reads `specification.applicationMetadata`; against a string that is `undefined`, so the app contributes nothing — silently |
+| Workflow `.zip` | `src/` tree, `specification` is an object | Needs unzipping; also carries `.agent`, `.bo` and `.tool` files alongside the `.wf` |
+
+`tools/ingest-local.mjs` therefore unzips archives, classifies each file **by its
+keys rather than its extension** (`workflowCode` → workflow, `agentCode` → agent,
+`objectCode` → business object, and so on), parses any stringified
+specification, and writes `src/<kind>/<code>.<ext>` into `.source/local/`.
+
+Ingested artifacts are tagged `origin: local`, show a **your environment** badge,
+and can be isolated in the Data Lab via *Only → from my environment*. `local/` is
+gitignored, so your artifacts are never committed or published.
+
+### Worked example
+
+A `BAIG_SALES_ORDER_WORKSPACE.json` plus a `bg_sales_order_workflow.zip` yielded
+six artifacts — 1 app, 1 workflow, 1 agent, 1 business object, 2 tools — and
+changed three things about the graph:
+
+- **A new artifact type.** The zip contained a `.agent` file, which the Oracle
+  sample corpus has none of. Agents are now a first-class node type.
+- **Two new step types.** `AGENT` (hands off to a reusable agent) and `EMAIL`,
+  neither of which appears in the sample corpus.
+- **Tool coverage moved from 4 of 9 to 5 of 9** — that `EMAIL` step is the only
+  use of the Email Tool anywhere in the graph.
+
+It also surfaced three dangling references, correctly: the app exposes
+`BAIG_SO_ORDER_360`, `BAIG_SO_FULFILLMENT` and `BAIG_SO_COMMUNICATIONS`, whose
+workflows were not in the export. They appear as *referenced but not present*
+rather than being silently dropped — export those workflows too and they resolve.
+
+## How Oracle categorises artifacts
+
+Every node carries **two** classifications, because they answer different
+questions:
+
+- `layerName` — the conceptual stack: outcomes → apps → agent teams → agents →
+  tools. What an artifact *is*.
+- `studioSection` — where the console puts it. Where you would *click* to find it.
+
+The browse panel toggles between them; **Studio sections** is the default since it
+mirrors the product.
+
+| Console location | Artifact |
+| --- | --- |
+| Applications | `.app` |
+| Workflows | `.wf` |
+| Resources · Agents | `.agent` where `type = WORKER` |
+| Resources · Supervisor Agents | `.agent` where `type = SUPERVISOR` |
+| Resources · Tools | `.tool` |
+| Resources · Topics | `.topic` |
+| Resources · Business Objects | `.bo` |
+| Resources · Deeplinks | `.dl` |
+| Resources · Functions | `.function` |
+| Resources · Document Schema | `.documentSchema` |
+| Connectors | `.connectorDefinition`, `.connectorInstance` |
+| Policy Models | `.policy`, `.policyTemplate` |
+| Approvals | `.approval` |
+
+Note the refinement this brought: the sample corpus has no `.agent` files, so
+agent-vs-agent-team there is *derived from edges* (app-exposed or invokes
+sub-workflows). When a real `.agent` file is present, its own `type` field decides
+— no heuristic needed.
+
 ## Why a custom extractor
 
 Graphify's AST extractors cover 20-odd languages plus Markdown and PDF, but AI Studio's
@@ -261,7 +348,8 @@ preserved across rebuilds; note bodies are not.
 fusion-knowledge-graph/
 ├── run.sh                        sync + rebuild everything
 ├── tools/
-│   ├── extract-fusion-graph.mjs  .app/.wf/.bo/.tool/.dl + skills + CLI + docs -> graph.json
+│   ├── ingest-local.mjs          your Fusion exports (.json / .zip) -> .source/local
+│   ├── extract-fusion-graph.mjs  .app/.wf/.bo/.tool/.dl/.agent + skills + CLI -> graph.json
 │   ├── compute-graph-metrics.mjs pagerank, betweenness, louvain, components, blast radius
 │   ├── build-obsidian-vault.mjs  graph.json -> Obsidian vault
 │   └── build-search-app.mjs      graph.json -> app/data.js (+ --bundle)
@@ -271,7 +359,9 @@ fusion-knowledge-graph/
 ├── vault/                        the Obsidian vault
 ├── app/                          Fusion AI Agent Stack Explorer (index.html + app.js + app.css + data.js)
 ├── data/cli-help.txt             captured `aistudio --help`
+├── local/                        drop your own exports here (gitignored)
 ├── .source/fusion-ai-studio/     upstream tree exported by --sync (gitignored)
+├── .source/local/                normalised copies of your exports (gitignored)
 └── .venv-graphify/               isolated graphify install, not global
 ```
 

@@ -142,7 +142,7 @@ const state = {
   layout: 'stack',
   hiddenRels: new Set(CLASSIFICATION_RELS),
   lab: { q: '', layer: '', type: '', family: '', flag: '', sort: 'pagerank', dir: -1 },
-  browse: { q: '', open: new Set(['Agentic applications']), expanded: new Set() },
+  browse: { q: '', by: 'section', open: new Set(['Applications']), expanded: new Set() },
   leftCollapsed: false,
   rightCollapsed: false,
 };
@@ -754,7 +754,24 @@ function domainCard(n) {
   const composition = [];
   const deps = [];
 
-  if (n.layer === 4) {
+  if (n.type === 'agent') {
+    const tools = targetsOf(n.id, 'uses_tool');
+    const topics = targetsOf(n.id, 'uses_topic');
+    const usedBy = sourcesOf(n.id, 'invokes_agent_resource', 'uses_agent');
+    rows.push(
+      ['Business area', [n.family, n.product].filter(Boolean).join(' · ') || '—'],
+      ['Agent code', el('code', { class: 'mono', text: n.code ?? '—' })],
+      ['Agent type', n.agentKind],
+      ['Status', [n.status, n.reusable ? '· reusable' : ''].filter(Boolean).join(' ')],
+      ['Namespace', n.namespace],
+      ['Max interactions', n.maxInteractions],
+    );
+    deps.push(
+      ['Tools', tools.length ? linkList(tools, 6) : null],
+      ['Topics', topics.length ? linkList(topics, 4) : null],
+      ['Invoked by', usedBy.length ? linkList(usedBy, 5) : null],
+    );
+  } else if (n.layer === 4) {
     // Agentic application
     const agents = targetsOf(n.id, 'exposes_agent');
     const panels = targetsOf(n.id, 'contains').filter((x) => x.type === 'appPanel');
@@ -1012,6 +1029,16 @@ function renderFocusPanel() {
  * supported tool type; BO functions are left out of the listing because their
  * 190 entries belong under their parent object.
  */
+/** Oracle's console order, so the list reads like the product navigation. */
+const SECTION_ORDER = [
+  'Applications', 'Workflows',
+  'Resources · Agents', 'Resources · Supervisor Agents', 'Resources · Tools',
+  'Resources · Topics', 'Resources · Business Objects', 'Resources · Deeplinks',
+  'Resources · Functions', 'Resources · Document Schema',
+  'Connectors', 'Policy Models', 'Approvals',
+  'Developer tooling', 'Documentation', 'Findings', 'Derived',
+];
+
 function browseGroups() {
   const q = state.browse.q.trim().toLowerCase();
   const match = (x) => !q
@@ -1022,6 +1049,28 @@ function browseGroups() {
 
   const of = (pred) => NODES.filter((x) => pred(x) && match(x))
     .sort((a, b) => String(a.label).localeCompare(String(b.label)));
+
+  if (state.browse.by === 'section') {
+    // grouped the way Oracle's console groups them
+    const bySec = new Map();
+    for (const x of of((y) => y.studioSection && y.studioSection !== 'Derived')) {
+      if (!bySec.has(x.studioSection)) bySec.set(x.studioSection, []);
+      bySec.get(x.studioSection).push(x);
+    }
+    const order = (n) => {
+      const i = SECTION_ORDER.indexOf(n);
+      return i === -1 ? 99 : i;
+    };
+    return [...bySec]
+      .sort((a, b) => order(a[0]) - order(b[0]))
+      .map(([name, items]) => ({
+        name,
+        note: name.startsWith('Resources') ? 'resource' : name.toLowerCase(),
+        color: layerColor(items[0]?.layer ?? -1),
+        items,
+        sub: (x) => [x.type, x.family, x.product].filter(Boolean).join(' · '),
+      }));
+  }
 
   const groups = [
     { name: 'Agentic applications', note: 'the product', color: layerColor(4),
@@ -1070,11 +1119,25 @@ function renderBrowse(box) {
   const groups = browseGroups();
   const total = groups.reduce((a, g) => a + g.items.length, 0);
 
+  const localCount = NODES.filter((x) => x.origin === 'local').length;
+  const modeBtn = (val, label) => el('button', {
+    class: `mini${state.browse.by === val ? ' on' : ''}`,
+    onclick: () => { state.browse.by = val; state.browse.open = new Set(); renderFocusPanel(); },
+    text: label,
+  });
+
   box.append(el('div', { class: 'card' },
     el('span', { class: 'lbl' }, 'Browse'),
     el('p', { class: 'ctx', style: 'margin:4px 0 8px' },
       `${num(total)} artifact${total === 1 ? '' : 's'} you can open. Pick one to see its wiring, or press ⌘K.`),
-    filter));
+    el('div', { style: 'display:flex;gap:5px;margin-bottom:8px' },
+      modeBtn('section', 'Studio sections'),
+      modeBtn('layer', 'Stack layers')),
+    filter,
+    localCount
+      ? el('p', { class: 'ctx', style: 'margin:8px 0 0;font-size:11px' },
+          `Includes ${num(localCount)} artifact${localCount === 1 ? '' : 's'} ingested from your environment.`)
+      : null));
 
   const wrap = el('div', { class: 'card' });
   const CAP = 25;
@@ -1261,10 +1324,11 @@ function renderRight() {
   const L = STACK_BY_LAYER.get(n.layer);
   if (L) {
     box.append(el('div', { style: 'margin-bottom:12px' },
-      el('span', { class: 'badge', style: `border-color:${L.color};color:${L.color}` },
-        `${L.name}`),
+      el('span', { class: 'badge', style: `border-color:${L.color};color:${L.color}` }, `${L.name}`),
+      n.studioSection && n.studioSection !== 'Derived' ? chip(n.studioSection) : null,
       n.stackRole ? chip(n.stackRole) : null,
-      n.appExposed ? chip('app-exposed') : null));
+      n.appExposed ? chip('app-exposed') : null,
+      n.origin === 'local' ? chip('your environment', 'hot') : null));
   }
 
   box.append(el('span', { class: 'lbl' }, 'Overview'));
@@ -1573,7 +1637,7 @@ function closePalette() {
 // ---------------------------------------------------------------- data lab
 
 const LAB_COLS = [
-  ['label', 'Node'], ['layerName', 'Layer'], ['type', 'Kind'], ['family', 'Family'], ['product', 'Product'],
+  ['label', 'Node'], ['studioSection', 'Studio section'], ['layerName', 'Layer'], ['type', 'Kind'], ['family', 'Family'], ['product', 'Product'],
   ['community', 'Comm'], ['pagerankRank', 'PR #'], ['pagerank', 'PageRank'],
   ['bridgeScore', 'Bridge'], ['blastRadius', 'Blast'], ['degree', 'Degree'],
   ['clustering', 'Clust'], ['flags', 'Flags'],
@@ -1589,6 +1653,7 @@ function labRows() {
     if (flag === 'articulation' && !n.articulation) return false;
     if (flag === 'issues' && !n.issues?.length) return false;
     if (flag === 'stub' && !n._stub) return false;
+    if (flag === 'local' && n.origin !== 'local') return false;
     return toks.every((t) => hay[i].includes(t));
   });
 }
@@ -1618,7 +1683,8 @@ function renderLab() {
         text: label + (sort === k ? (dir === -1 ? ' ↓' : ' ↑') : ''),
       })))),
     el('tbody', {}, ...rows.slice(0, 1200).map((n) => el('tr', {},
-      el('td', { class: 'name' }, nodeLink(n.id)),
+      el('td', { class: 'name' }, nodeLink(n.id), n.origin === 'local' ? chip('yours') : null),
+      el('td', { text: n.studioSection ?? '' }),
       el('td', {}, el('span', { class: 'dot', style: `display:inline-block;background:${layerColor(n.layer)};margin-right:5px` }), n.layerName ?? ''),
       el('td', {}, el('span', { class: 'dot', style: `display:inline-block;background:${typeColor(n.type)};margin-right:5px` }), n.type),
       el('td', { text: n.family ?? '' }),
