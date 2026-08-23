@@ -651,10 +651,13 @@ document.querySelector('.stage').append(tip);
 
 function showTip(node, cx, cy) {
   const L = STACK_BY_LAYER.get(node.layer);
-  tip.replaceChildren(
+  // replaceChildren() is the native DOM method: a null argument becomes the
+  // text "null" rather than being skipped, so filter before passing them in.
+  tip.replaceChildren(...[
     el('b', { text: node.label }),
     el('span', { text: [L?.name, node.type, node.nodeType].filter(Boolean).join(' · ') }),
-    node.summary ? el('i', { text: node.summary.slice(0, 120) }) : null);
+    node.summary ? el('i', { text: node.summary.slice(0, 120) }) : null,
+  ].filter(Boolean));
   tip.hidden = false;
   const r = tip.getBoundingClientRect();
   const stage = document.querySelector('.stage').getBoundingClientRect();
@@ -754,7 +757,32 @@ function domainCard(n) {
   const composition = [];
   const deps = [];
 
-  if (n.type === 'agent') {
+  if (n.type === 'appPanel' || n.type === 'appSubPanel') {
+    const app = sourcesOf(n.id, 'contains').find((x) => x.type === 'app' || x.type === 'appPanel');
+    const agents = targetsOf(n.id, 'rendered_by');
+    const subs = targetsOf(n.id, 'contains');
+    rows.push(
+      ['Kind', n.type === 'appPanel' ? 'Agent container (panel)' : 'Additional panel'],
+      ['In app', app ? linkList([app], 1) : (n.app ?? null)],
+    );
+    deps.push(
+      ['Rendered by', agents.length ? linkList(agents, 4) : null],
+      ['Sub-panels', subs.length ? linkList(subs, 5) : null],
+    );
+  } else if (n.type === 'appAction') {
+    const app = sourcesOf(n.id, 'contains')[0];
+    const navs = targetsOf(n.id, 'navigates_to');
+    const invokes = targetsOf(n.id, 'invokes_agent');
+    rows.push(
+      ['Kind', 'App action'],
+      ['Action code', el('code', { class: 'mono', text: n.code ?? '—' })],
+      ['In app', app ? linkList([app], 1) : (n.app ?? null)],
+    );
+    deps.push(
+      ['Navigates to', navs.length ? linkList(navs, 3) : null],
+      ['Invokes agent', invokes.length ? linkList(invokes, 3) : null],
+    );
+  } else if (n.type === 'agent') {
     const tools = targetsOf(n.id, 'uses_tool');
     const topics = targetsOf(n.id, 'uses_topic');
     const usedBy = sourcesOf(n.id, 'invokes_agent_resource', 'uses_agent');
@@ -1047,7 +1075,10 @@ function browseGroups() {
     || (x.product || '').toLowerCase().includes(q)
     || (x.family || '').toLowerCase().includes(q);
 
-  const of = (pred) => NODES.filter((x) => pred(x) && match(x))
+  // Components (panels, actions, workflow steps, BO functions) are reachable by
+  // opening their parent and via ⌘K; listing them here made "Applications" read
+  // as 69 entries when there are 6 apps.
+  const of = (pred) => NODES.filter((x) => !x.component && pred(x) && match(x))
     .sort((a, b) => String(a.label).localeCompare(String(b.label)));
 
   if (state.browse.by === 'section') {
@@ -1492,14 +1523,14 @@ function renderCredit() {
   const box = $('#credit');
   if (!box) return;
   const at = G.attribution;
-  box.replaceChildren(
+  box.replaceChildren(...[
     'built by ',
     a.linkedin
       ? el('a', { class: 'nl', href: a.linkedin, target: '_blank', rel: 'noreferrer' }, a.name)
       : el('span', { text: a.name }),
     at?.text ? ' · ' : null,
     at?.text ? el('a', { class: 'nl', href: at.href, target: '_blank', rel: 'noreferrer' }, at.text) : null,
-  );
+  ].filter(Boolean));
 }
 
 const LAYOUT_HINTS = {

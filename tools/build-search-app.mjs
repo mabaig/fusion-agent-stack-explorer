@@ -61,7 +61,7 @@ const KEEP = [
   // supported-tool-type classification
   'toolTypeKey', 'toolTypeName', 'toolTypeSource', 'supportedSince', 'artifactCount', 'usedHere',
   // Oracle console section, provenance, and .agent specifics
-  'studioSection', 'origin', 'agentKind', 'reusable', 'namespace', 'maxInteractions',
+  'studioSection', 'origin', 'agentKind', 'reusable', 'namespace', 'maxInteractions', 'component',
 ];
 
 const nodes = graph.nodes.map((n) => {
