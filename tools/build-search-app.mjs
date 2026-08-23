@@ -26,14 +26,10 @@ const APP = path.join(KG_ROOT, 'app');
 
 const graph = JSON.parse(fs.readFileSync(GRAPH, 'utf8'));
 
-/**
- * Credit shown in the status bar. `linkedin` is intentionally empty until the
- * real profile URL is supplied — the name renders as plain text rather than
- * shipping a guessed or broken link.
- */
+/** Credit shown in the status bar of the explorer. */
 const AUTHOR = {
   name: 'Baig Mohammed',
-  linkedin: '',
+  linkedin: 'https://www.linkedin.com/in/mbaig162/',
 };
 
 /**
