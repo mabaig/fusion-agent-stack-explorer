@@ -62,6 +62,8 @@ const KEEP = [
   'degree', 'inDegree', 'outDegree',
   // Agent Studio stack position
   'layer', 'layerName', 'stackRole', 'appExposed',
+  // supported-tool-type classification
+  'toolTypeKey', 'toolTypeName', 'toolTypeSource', 'supportedSince', 'artifactCount', 'usedHere',
 ];
 
 const nodes = graph.nodes.map((n) => {
@@ -93,6 +95,7 @@ const payload = {
   counts: graph._meta?.counts ?? {},
   metrics: graph._meta?.metrics ?? {},
   layers: graph._meta?.layers ?? {},
+  toolTypes: graph._meta?.toolTypes ?? {},
   nodes,
   edges,
 };

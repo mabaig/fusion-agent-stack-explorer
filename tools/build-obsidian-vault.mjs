@@ -449,6 +449,7 @@ function tagsFor(n) {
   if (n.issues?.length) t.push('finding/has-issue');
   if (n.articulation) t.push('finding/cut-vertex');
   if (n.layerName) t.push(`layer/${String(n.layerName).replace(/[^a-z]+/gi, '-').toLowerCase()}`);
+  if (n.toolTypeKey) t.push(`tool/${n.toolTypeKey}`);
   if (n.community !== undefined) t.push(`community/C-${n.community}`);
   return t;
 }
@@ -476,6 +477,7 @@ function noteFor(n) {
     platformSeeded: n._stub,
     source: n.source_file,
     layer: n.layerName,
+    toolType: n.toolTypeName,
     stackRole: n.stackRole,
     appExposed: n.appExposed,
     pagerank: n.pagerank,
@@ -732,6 +734,53 @@ const maps = {
       ])
     );
   })(),
+  'Tool Types': (() => {
+    const types = graph.nodes.filter((x) => x.type === 'toolType')
+      .sort((a, b) => (b.artifactCount ?? 0) - (a.artifactCount ?? 0));
+    const used = types.filter((x) => x.usedHere);
+    // Follow the edges rather than the toolTypeKey attribute: a classified
+    // artifact gets `is_tool_type`, while a DOCUMENT_PROCESSOR step gets
+    // `uses_tool_type` without being a tool itself. Counting only the attribute
+    // under-reports the second kind.
+    const bySource = (id) => incs(id)
+      .filter((e) => e.relation === 'is_tool_type' || e.relation === 'uses_tool_type')
+      .map((e) => byId.get(e.source))
+      .filter(Boolean);
+    return [
+      `Tools are what turn a Fusion AI agent from a conversational bot into something that acts on the business. Agent Studio supports ${types.length} tool types as of release 26A; **${used.length} are exercised in this corpus**.`,
+      'Availability varies by release — check your own environment for the current list.',
+      mocTable(types, [
+        ['Tool type', (x) => link(x.id)],
+        ['Used here', (x) => (x.usedHere ? `${x.artifactCount} artifact${x.artifactCount === 1 ? '' : 's'}` : '—')],
+        ['What it does', (x) => clean(x.summary, 130)],
+      ]),
+      '## Used in this corpus',
+      ...used.flatMap((t) => {
+        const list = bySource(t.id);
+        const show = list.filter((x) => x.type !== 'boFunction').slice(0, 25);
+        const fnCount = list.filter((x) => x.type === 'boFunction').length;
+        return [
+          `### ${t.label} — ${list.length} artifact${list.length === 1 ? '' : 's'}`,
+          t.summary,
+          show.length
+            ? mocTable(show, [
+                ['Artifact', (x) => link(x.id)],
+                ['Kind', (x) => x.type],
+                ['Family', (x) => x.family ?? ''],
+                ['Classified', (x) => x.toolTypeSource ?? ''],
+              ])
+            : '_All instances are BO functions; see the parent business objects._',
+          fnCount && show.length ? `Plus ${fnCount} BO function${fnCount === 1 ? '' : 's'} on those objects.` : null,
+        ].filter(Boolean);
+      }),
+      '## Supported but unused here',
+      'Capability available in Agent Studio that this corpus does not exercise. Useful as a gap list when planning new agents.',
+      mocTable(types.filter((x) => !x.usedHere), [
+        ['Tool type', (x) => link(x.id)],
+        ['What it would give you', (x) => clean(x.summary, 160)],
+      ]),
+    ].join('\n\n');
+  })(),
   'Architecture Stack': (() => {
     const ORDER = [
       [5, 'Business outcomes', 'the result'],
@@ -881,6 +930,7 @@ plus the control-flow and data-flow edges that connect them.
 | [[Maps/Skills and Prompts]] | Skills and the prompt references they load |
 | [[Maps/Tools and Deeplinks]] | Tools and their backing deeplinks |
 | [[Maps/Taxonomy]] | Families, products, model configurations, artifact types |
+| [[Maps/Tool Types]] | The 9 supported tool types, which are used here and which are not |
 | [[Maps/Architecture Stack]] | The Agent Studio hierarchy: outcomes → apps → teams → agents → tools |
 | [[Maps/Hubs and Bottlenecks]] | PageRank hubs, bridges, cut vertices, blast radius |
 | [[Maps/Findings]] | Unwired branches, unresolved references, platform-seeded artifacts |

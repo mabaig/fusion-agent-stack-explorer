@@ -78,6 +78,7 @@ const CLASSIFICATION_RELS = new Set([
   'in_group', 'has_verb', 'routes_artifact', 'operates_on',
   'documents_artifact', 'targets_family', 'uses_model', 'governed_by',
   'reads_app_context', 'routes_app_stage', 'has_issue',
+  'is_tool_type', 'uses_tool_type',
 ]);
 const INCLUDE_ALL = argv.includes('--include-classification');
 

@@ -62,7 +62,7 @@ const CLASSIFICATION_RELS = new Set([
   'in_family', 'in_product', 'belongs_to_family', 'is_artifact_type', 'in_group',
   'has_verb', 'routes_artifact', 'operates_on', 'documents_artifact',
   'targets_family', 'uses_model', 'governed_by', 'reads_app_context',
-  'routes_app_stage', 'has_issue',
+  'routes_app_stage', 'has_issue', 'is_tool_type', 'uses_tool_type',
 ]);
 const FLOW_RELS = new Set(['flows_to', 'converges_to', 'on_error_to']);
 const DATA_RELS = new Set(['reads_output_of', 'calls_bo_function', 'uses_business_object',
@@ -817,6 +817,7 @@ function domainCard(n) {
     rows.push(
       ['Business area', [n.family, n.product].filter(Boolean).join(' · ') || '—'],
       ['Code', el('code', { class: 'mono', text: n.code ?? '—' })],
+      ['Tool type', n.toolTypeName ? [n.toolTypeName, n.toolTypeSource ? `(${n.toolTypeSource})` : ''].join(' ') : null],
       ['Kind', [n.type, n.toolType, n.operationType].filter(Boolean).join(' · ')],
       ['Object source', n.objectSource],
       ['REST', n.restResourcePath ?? (rest.length ? rest[0].label : null)],
@@ -845,6 +846,13 @@ function domainCard(n) {
       ['Reads output of', reads.length ? linkList(reads, 4) : null],
       ['Then', next.length ? linkList(next, 4) : null],
     );
+  } else if (n.type === 'toolType') {
+    const users = sourcesOf(n.id, 'is_tool_type', 'uses_tool_type');
+    rows.push(
+      ['Supported since', n.supportedSince ? `release ${n.supportedSince}` : null],
+      ['Used in this corpus', n.usedHere ? `yes — ${num(n.artifactCount)} artifact${n.artifactCount === 1 ? '' : 's'}` : 'no — supported but not exercised here'],
+    );
+    deps.push(['Artifacts', users.length ? linkList(users, 8) : null]);
   } else if (n.layer === 5) {
     const members = sourcesOf(n.id, 'in_product', 'in_family', 'belongs_to_family');
     const wfs = members.filter((x) => x.type === 'workflow');
@@ -972,6 +980,7 @@ function renderFocusPanel() {
         el('span', { class: 'lbl' }, 'Start here'),
         el('p', { class: 'ctx', style: 'margin:6px 0 0' },
           'Press ⌘K, or open a hub from the right-hand panel, to focus an artifact.')),
+      toolCoverageCard(),
       el('div', { class: 'card' },
         el('span', { class: 'lbl' }, 'The stack'),
         ...STACK.filter((L) => (G.layers ?? {})[L.name]).map((L) =>
@@ -1002,6 +1011,25 @@ function renderFocusPanel() {
   box.append(riskCard(n));
   box.append(structureCard(n));
   renderPressure(box);
+}
+
+/** How much of the supported tool surface this corpus actually uses. */
+function toolCoverageCard() {
+  const types = NODES.filter((x) => x.type === 'toolType');
+  if (!types.length) return null;
+  const used = types.filter((x) => x.usedHere);
+  const card = el('div', { class: 'card' },
+    el('span', { class: 'lbl' }, 'Tool coverage'),
+    el('p', { class: 'ctx', style: 'margin:4px 0 8px' },
+      `${used.length} of ${types.length} supported tool types are used here.`));
+  for (const t of [...types].sort((a, b) => (b.artifactCount ?? 0) - (a.artifactCount ?? 0))) {
+    card.append(el('div', { class: 'pressure', style: 'margin-bottom:6px' },
+      el('div', { class: 'row' },
+        el('span', { class: 'name', style: t.usedHere ? null : 'color:var(--fg-dim);font-weight:400' },
+          el('a', { class: 'nl', onclick: () => focusNode(t.id) }, t.label)),
+        el('span', { class: 'n', text: t.usedHere ? num(t.artifactCount) : 'unused' }))));
+  }
+  return card;
 }
 
 function renderPressure(box) {

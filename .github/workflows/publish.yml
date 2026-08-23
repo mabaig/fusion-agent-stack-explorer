@@ -1,0 +1,82 @@
+# Rebuild the knowledge graph from upstream and publish the explorer to GitHub Pages.
+#
+# The graph is derived data, so it is not committed: this workflow clones
+# oracle/fusion-ai-studio itself, rebuilds, and deploys. That keeps the published
+# site current without anyone running the pipeline by hand.
+#
+# One-time setup: Settings -> Pages -> Source = "GitHub Actions".
+
+name: Publish explorer
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 4 * * 1'   # Mondays, to pick up upstream releases
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Clone the upstream corpus
+        run: |
+          git clone --depth 1 --branch release-26C \
+            https://github.com/oracle/fusion-ai-studio.git .source/fusion-ai-studio
+          rm -rf .source/fusion-ai-studio/.git
+
+      - name: Capture the aistudio CLI command list
+        run: |
+          CLI="$(find .source -name aistudio.js -path '*scripts*' | head -1)"
+          mkdir -p data
+          if [ -n "$CLI" ]; then
+            SCRATCH="$(mktemp -d)"
+            ( cd "$SCRATCH" && node "$GITHUB_WORKSPACE/$CLI" --help ) > data/cli-help.txt || true
+          fi
+          wc -l data/cli-help.txt || true
+
+      - name: Build graph, metrics and site
+        run: |
+          node tools/extract-fusion-graph.mjs
+          node tools/compute-graph-metrics.mjs
+          node tools/build-search-app.mjs --site --site-dir _site
+
+      - name: Check the payload carries no secrets
+        run: |
+          if grep -aEi 'BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}|password[[:space:]]*[:=]' _site/data.js; then
+            echo "::error::secret-shaped string found in the published payload"
+            exit 1
+          fi
+          echo "payload clean"
+
+      - name: Ship the licence notices alongside the site
+        run: cp NOTICE.md LICENSE LICENSE-UPL-oracle.txt _site/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
