@@ -49,7 +49,11 @@
 <!-- ------------------------------------------------------------- graph -->
 <section id="graph">
   <div class="graph-main">
-    <aside class="side left" id="focus-panel"></aside>
+    <aside class="side left" id="left-panel">
+      <button class="panel-toggle" id="toggle-left" title="Collapse panel ([)" aria-expanded="true">‹</button>
+      <div class="side-body" id="focus-panel"></div>
+      <div class="rail-label">Browse</div>
+    </aside>
 
     <div class="stage">
       <canvas id="cv"></canvas>
@@ -75,7 +79,9 @@
       </div>
     </div>
 
-    <aside class="side right">
+    <aside class="side right" id="right-panel">
+      <button class="panel-toggle right" id="toggle-right" title="Collapse panel (])" aria-expanded="true">›</button>
+      <div class="side-body">
       <div class="rtabs" role="tablist">
         <button role="tab" data-rtab="node" aria-selected="true">Node</button>
         <button role="tab" data-rtab="neighbors" aria-selected="false">Neighbors</button>
@@ -83,6 +89,8 @@
         <button role="tab" data-rtab="hubs" aria-selected="false">Hubs</button>
       </div>
       <div class="rbody" id="rbody"></div>
+      </div>
+      <div class="rail-label">Details</div>
     </aside>
   </div>
 

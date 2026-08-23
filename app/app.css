@@ -201,11 +201,55 @@ button.search-open kbd {
   display: grid;
   grid-template-columns: 312px minmax(0, 1fr) 336px;
   min-height: 0;
+  /* No transition on grid-template-columns: it is unreliable (the first change
+     after page load was dropped) and animating a grid track is not worth a
+     layout that sometimes does not apply. */
 }
 
-.side { overflow: auto; background: var(--panel); min-height: 0; }
-.side.left { border-right: 1px solid var(--border); padding: 14px; }
+/* Collapsed track sizes are applied as an inline style by setPanelWidths() in
+   app.js. Doing it from the stylesheet did not stick: the selector matched and
+   the rule was present, yet the computed grid-template-columns kept the base
+   value. An inline style cannot be outranked, and JS already owns the state. */
+
+.side { position: relative; overflow: hidden; background: var(--panel); min-height: 0; }
+.side.left { border-right: 1px solid var(--border); }
 .side.right { border-left: 1px solid var(--border); }
+.side-body { height: 100%; overflow: auto; }
+.side.left .side-body { padding: 14px 14px 14px 14px; }
+
+/* collapse toggles */
+.panel-toggle {
+  position: absolute;
+  top: 8px; right: 6px;
+  z-index: 4;
+  width: 20px; height: 20px;
+  display: grid; place-items: center;
+  font: 600 13px/1 var(--sans);
+  color: var(--fg-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.panel-toggle.right { right: auto; left: 6px; }
+.panel-toggle:hover { color: var(--accent); border-color: var(--accent); }
+
+.rail-label { display: none; }
+body.left-collapsed .side.left .side-body,
+body.right-collapsed .side.right .side-body { display: none; }
+body.left-collapsed .side.left .rail-label,
+body.right-collapsed .side.right .rail-label {
+  display: block;
+  position: absolute;
+  top: 40px; left: 50%;
+  transform: translateX(-50%) rotate(180deg);
+  writing-mode: vertical-rl;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--fg-dim);
+  white-space: nowrap;
+  pointer-events: none;
+}
+body.left-collapsed #toggle-left, body.right-collapsed #toggle-right { right: 4px; left: 4px; }
 
 .stage { position: relative; min-width: 0; min-height: 320px; background: var(--bg); }
 canvas { display: block; width: 100%; height: 100%; cursor: grab; }
@@ -266,9 +310,68 @@ canvas:active { cursor: grabbing; }
 .badge.clickable { cursor: pointer; }
 .badge.clickable:hover { border-color: var(--accent); color: var(--accent); }
 
+/* ------------------------------------------------------------- browse list */
+
+.browse-filter {
+  width: 100%;
+  padding: 7px 9px;
+  margin-bottom: 10px;
+  font: inherit; font-size: 12.5px;
+  color: var(--fg);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.browse-filter:focus { outline: 1px solid var(--accent); }
+
+details.grp2 { margin-bottom: 8px; border-bottom: 1px solid var(--border-soft); padding-bottom: 6px; }
+details.grp2 > summary {
+  cursor: pointer;
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 0;
+  font-size: 12.5px; font-weight: 600;
+  list-style: none;
+}
+details.grp2 > summary::-webkit-details-marker { display: none; }
+details.grp2 > summary::before {
+  content: '▸'; color: var(--fg-dim); font-size: 10px; width: 9px; flex: none;
+}
+details.grp2[open] > summary::before { content: '▾'; }
+details.grp2 > summary .n { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--fg-dim); }
+details.grp2 > summary .note { font-weight: 400; font-size: 10.5px; color: var(--fg-dim); }
+
+ul.browse { list-style: none; margin: 2px 0 0; padding: 0 0 0 16px; }
+ul.browse li { padding: 2px 0; font-size: 12.5px; line-height: 1.4; overflow-wrap: anywhere; }
+ul.browse li .sub { color: var(--fg-dim); font-size: 10.5px; }
+button.more {
+  margin: 4px 0 0 16px;
+  font: inherit; font-size: 11px;
+  padding: 2px 8px;
+  background: var(--panel-3); color: var(--fg-mid);
+  border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
+}
+button.more:hover { color: var(--accent); border-color: var(--accent); }
+
+.back-browse {
+  display: inline-flex; align-items: center; gap: 5px;
+  margin-bottom: 10px;
+  font: inherit; font-size: 11.5px;
+  padding: 4px 9px;
+  background: var(--panel-2); color: var(--fg-mid);
+  border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+}
+.back-browse:hover { color: var(--accent); border-color: var(--accent); }
+
 /* ------------------------------------------------------------- right panel */
 
-.rtabs { display: flex; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); z-index: 2; }
+.rtabs {
+  display: flex;
+  padding-left: 24px;                 /* clear of the collapse toggle */
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0;
+  background: var(--panel);
+  z-index: 2;
+}
 .rtabs button {
   flex: 1 1 0;
   min-width: 0;

@@ -142,6 +142,9 @@ const state = {
   layout: 'stack',
   hiddenRels: new Set(CLASSIFICATION_RELS),
   lab: { q: '', layer: '', type: '', family: '', flag: '', sort: 'pagerank', dir: -1 },
+  browse: { q: '', open: new Set(['Agentic applications']), expanded: new Set() },
+  leftCollapsed: false,
+  rightCollapsed: false,
 };
 
 const relVisible = (r) => !state.hiddenRels.has(r);
@@ -699,7 +702,7 @@ const hideTip = () => { tip.hidden = true; };
     sim.scale = ns;
     paint();
   }, { passive: false });
-  window.addEventListener('resize', () => paint());
+  window.addEventListener('resize', () => { setPanelWidths(); paint(); });
 })();
 
 // ---------------------------------------------------------------- focus panel
@@ -975,29 +978,19 @@ function renderFocusPanel() {
   box.replaceChildren();
 
   if (!state.focus) {
-    box.append(
-      el('div', { class: 'card' },
-        el('span', { class: 'lbl' }, 'Start here'),
-        el('p', { class: 'ctx', style: 'margin:6px 0 0' },
-          'Press ⌘K, or open a hub from the right-hand panel, to focus an artifact.')),
-      toolCoverageCard(),
-      el('div', { class: 'card' },
-        el('span', { class: 'lbl' }, 'The stack'),
-        ...STACK.filter((L) => (G.layers ?? {})[L.name]).map((L) =>
-          el('div', { class: 'pressure' },
-            el('div', { class: 'row' },
-              el('span', { class: 'name' },
-                el('span', { class: 'dot', style: `display:inline-block;background:${L.color};margin-right:6px` }),
-                L.name),
-              el('span', { class: 'n', text: num(G.layers[L.name]) })),
-            el('div', { class: 'keys', text: L.note })))),
-    );
-    renderPressure(box);
+    renderBrowse(box);
+    const cov = toolCoverageCard();
+    if (cov) box.append(cov);
     return;
   }
 
   const n = byId.get(state.focus);
   const L = STACK_BY_LAYER.get(n.layer);
+  box.append(el('button', {
+    class: 'back-browse',
+    onclick: () => { state.focus = null; refreshGraph(); },
+    text: '‹ back to browse',
+  }));
   const head = el('div', { class: 'card' },
     el('span', { class: 'lbl' }, 'Current focus'),
     el('h2', { class: 'focus-title', text: n.label }),
@@ -1011,6 +1004,112 @@ function renderFocusPanel() {
   box.append(riskCard(n));
   box.append(structureCard(n));
   renderPressure(box);
+}
+
+/**
+ * The catalogue the left panel shows when nothing is selected: everything you
+ * can open, grouped the way the stack is organised. Tools are sub-grouped by
+ * supported tool type; BO functions are left out of the listing because their
+ * 190 entries belong under their parent object.
+ */
+function browseGroups() {
+  const q = state.browse.q.trim().toLowerCase();
+  const match = (x) => !q
+    || (x.label || '').toLowerCase().includes(q)
+    || (x.code || '').toLowerCase().includes(q)
+    || (x.product || '').toLowerCase().includes(q)
+    || (x.family || '').toLowerCase().includes(q);
+
+  const of = (pred) => NODES.filter((x) => pred(x) && match(x))
+    .sort((a, b) => String(a.label).localeCompare(String(b.label)));
+
+  const groups = [
+    { name: 'Agentic applications', note: 'the product', color: layerColor(4),
+      items: of((x) => x.type === 'app'), sub: (x) => [x.family, x.pagePattern].filter(Boolean).join(' · ') },
+    { name: 'Agent teams', note: 'supervisor + workflow', color: layerColor(3),
+      items: of((x) => x.layer === 3), sub: (x) => [x.family, x.product, x.stackRole].filter(Boolean).join(' · ') },
+    { name: 'Agents', note: 'compose tools', color: layerColor(2),
+      items: of((x) => x.layer === 2), sub: (x) => [x.family, x.product].filter(Boolean).join(' · ') },
+  ];
+
+  // tools, split by supported type so the taxonomy is visible while browsing
+  const toolish = new Set(['tool', 'businessObject', 'deeplink']);
+  const byType = new Map();
+  for (const x of of((y) => toolish.has(y.type))) {
+    const k = x.toolTypeName ?? 'Unclassified';
+    if (!byType.has(k)) byType.set(k, []);
+    byType.get(k).push(x);
+  }
+  for (const [k, items] of [...byType].sort((a, b) => b[1].length - a[1].length)) {
+    groups.push({
+      name: k, note: 'tool', color: layerColor(1), items,
+      sub: (x) => [x.type, x.family, x.product].filter(Boolean).join(' · '),
+    });
+  }
+
+  groups.push({ name: 'Skills & prompt references', note: 'authoring', color: layerColor(-1),
+    items: of((x) => x.type === 'skill' || x.type === 'promptReference'), sub: (x) => x.type });
+  groups.push({ name: 'CLI commands', note: 'authoring', color: layerColor(-1),
+    items: of((x) => x.type === 'cliCommand'), sub: (x) => [x.group, x.verb].filter(Boolean).join(' · ') });
+
+  return groups.filter((g) => g.items.length);
+}
+
+function renderBrowse(box) {
+  const filter = el('input', {
+    class: 'browse-filter', type: 'text', placeholder: 'Filter this list…',
+    value: state.browse.q, spellcheck: 'false',
+  });
+  filter.addEventListener('input', (e) => {
+    state.browse.q = e.target.value;
+    renderFocusPanel();
+    const f = $('.browse-filter');
+    if (f) { f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
+  });
+
+  const groups = browseGroups();
+  const total = groups.reduce((a, g) => a + g.items.length, 0);
+
+  box.append(el('div', { class: 'card' },
+    el('span', { class: 'lbl' }, 'Browse'),
+    el('p', { class: 'ctx', style: 'margin:4px 0 8px' },
+      `${num(total)} artifact${total === 1 ? '' : 's'} you can open. Pick one to see its wiring, or press ⌘K.`),
+    filter));
+
+  const wrap = el('div', { class: 'card' });
+  const CAP = 25;
+  for (const g of groups) {
+    const open = state.browse.open.has(g.name) || (state.browse.q && g.items.length <= 40);
+    const expanded = state.browse.expanded.has(g.name);
+    const shown = expanded ? g.items : g.items.slice(0, CAP);
+
+    const list = el('ul', { class: 'browse' }, ...shown.map((x) => el('li', {},
+      nodeLink(x.id),
+      g.sub(x) ? el('div', { class: 'sub', text: g.sub(x) }) : null)));
+
+    const d = el('details', { class: 'grp2', ...(open ? { open: '' } : {}) },
+      el('summary', {},
+        el('span', { class: 'dot', style: `background:${g.color}` }),
+        el('span', { text: g.name }),
+        el('span', { class: 'note', text: g.note }),
+        el('span', { class: 'n', text: num(g.items.length) })),
+      list,
+      g.items.length > CAP && !expanded
+        ? el('button', {
+            class: 'more',
+            onclick: (e) => { e.preventDefault(); state.browse.expanded.add(g.name); renderFocusPanel(); },
+            text: `show all ${num(g.items.length)}`,
+          })
+        : null);
+
+    d.addEventListener('toggle', () => {
+      if (d.open) state.browse.open.add(g.name);
+      else state.browse.open.delete(g.name);
+    });
+    wrap.append(d);
+  }
+  if (!groups.length) wrap.append(el('div', { class: 'empty' }, 'Nothing matches that filter.'));
+  box.append(wrap);
 }
 
 /** How much of the supported tool surface this corpus actually uses. */
@@ -1135,7 +1234,7 @@ function renderRight() {
 
   const n = state.focus ? byId.get(state.focus) : null;
   if (!n) {
-    box.append(el('div', { class: 'empty' }, 'Nothing focused. Press ⌘K to search, or open a hub.'));
+    box.append(el('div', { class: 'empty' }, 'Nothing selected. Choose an artifact from the Browse panel, or press ⌘K.'));
     return;
   }
 
@@ -1289,6 +1388,38 @@ function renderStatus() {
     ? 'static layout'
     : (sim.alpha <= 0.02 ? `layout settled (${sim.energy.toFixed(2)})` : 'relaxing…');
   $('#status-right').textContent = `${state.layout} · depth ${state.depth} · ${settled}`;
+}
+
+const PANEL_W = { wide: { left: 312, right: 336 }, narrow: { left: 268, right: 300 } };
+const COLLAPSED_W = 30;
+
+/** Set the grid tracks inline; a stylesheet rule for this did not take effect. */
+function setPanelWidths() {
+  const gm = document.querySelector('.graph-main');
+  if (!gm) return;
+  if (!state.leftCollapsed && !state.rightCollapsed) {
+    gm.style.gridTemplateColumns = '';   // hand it back to the stylesheet
+    return;
+  }
+  const base = window.innerWidth <= 1280 ? PANEL_W.narrow : PANEL_W.wide;
+  const l = state.leftCollapsed ? COLLAPSED_W : base.left;
+  const r = state.rightCollapsed ? COLLAPSED_W : base.right;
+  gm.style.gridTemplateColumns = `${l}px minmax(0, 1fr) ${r}px`;
+}
+
+function setCollapsed(side, val) {
+  if (side === 'left') state.leftCollapsed = val;
+  else state.rightCollapsed = val;
+  document.body.classList.toggle(`${side}-collapsed`, val);
+  setPanelWidths();
+  const btn = $(`#toggle-${side}`);
+  if (btn) {
+    btn.textContent = side === 'left' ? (val ? '›' : '‹') : (val ? '‹' : '›');
+    btn.setAttribute('aria-expanded', String(!val));
+    btn.title = `${val ? 'Expand' : 'Collapse'} panel (${side === 'left' ? '[' : ']'})`;
+  }
+  // the grid column changed, so the canvas needs a re-measure
+  requestAnimationFrame(() => { paint(); fit(); });
 }
 
 function renderCredit() {
@@ -1692,6 +1823,8 @@ $('#legend-all').addEventListener('click', () => {
   refreshGraph();
 });
 $('#search-open').addEventListener('click', openPalette);
+$('#toggle-left').addEventListener('click', () => setCollapsed('left', !state.leftCollapsed));
+$('#toggle-right').addEventListener('click', () => setCollapsed('right', !state.rightCollapsed));
 
 $('#lab-q').addEventListener('input', (e) => { state.lab.q = e.target.value; renderLab(); });
 $('#lab-layer').addEventListener('change', (e) => { state.lab.layer = e.target.value; renderLab(); });
@@ -1708,6 +1841,9 @@ document.addEventListener('keydown', (e) => {
   if (e.key === '/') { e.preventDefault(); openPalette(); }
   else if (e.key === 'g') switchTab('graph');
   else if (e.key === 'd') switchTab('lab');
+  else if (e.key === '[') setCollapsed('left', !state.leftCollapsed);
+  else if (e.key === ']') setCollapsed('right', !state.rightCollapsed);
+  else if (e.key === 'Escape' && state.focus) { state.focus = null; refreshGraph(); }
 });
 
 // ---------------------------------------------------------------- boot
@@ -1726,7 +1862,7 @@ for (const f of [...new Set(NODES.map((n) => n.family).filter(Boolean))].sort())
 }
 
 document.querySelector('.stage').append(el('div', { class: 'overlay ov-empty', id: 'stage-empty' },
-  'Nothing focused. Press ⌘K to search, or open a hub from the Hubs tab.'));
+  'Nothing selected. Pick an app, agent team, agent or tool from the Browse panel on the left — or press ⌘K to search.'));
 
 $('#layout').value = state.layout;
 $('#color-by').value = state.colorBy;
@@ -1735,10 +1871,9 @@ renderCounts();
 renderCredit();
 buildTools();
 
-// open on the app with the most agents so the first screen shows real structure
-const seed = NODES.filter((n) => n.type === 'app' && !n._stub)
-  .sort((a, b) => (b.agentCount ?? 0) - (a.agentCount ?? 0))[0]
-  ?? [...NODES].sort((a, b) => (b.pagerank ?? 0) - (a.pagerank ?? 0))[0];
-state.focus = seed ? seed.id : null;
+// First load starts with nothing selected: the left panel lists what is
+// available, so the entry point is a deliberate choice rather than an arbitrary
+// seed node.
+state.focus = null;
 refreshGraph();
 renderLab();
